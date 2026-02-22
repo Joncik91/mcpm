@@ -6,6 +6,9 @@ use serde_json::Value;
 use crate::types::*;
 
 /// Scan all known MCP config locations and return discovered servers
+/// For CC-Global, also scans top-level mcpServers and deduplicates by name.
+
+/// Scan all known MCP config locations and return discovered servers
 pub fn discover(cwd: &Path) -> DiscoveryResult {
     let mut result = DiscoveryResult::default();
 
@@ -123,19 +126,32 @@ fn parse_server_map(
 // Individual scanners
 // ---------------------------------------------------------------------------
 
-/// ~/.claude.json → projects["<path>"].mcpServers
+/// ~/.claude.json → top-level mcpServers + projects["<path>"].mcpServers (deduplicated)
 fn scan_claude_code_global(result: &mut DiscoveryResult) {
     let path = home(".claude.json");
     let Some((root, src)) = read_json_with_errors(&path, &mut result.errors) else {
         return;
     };
 
+    let mut seen: HashSet<String> = HashSet::new();
+
+    // Top-level mcpServers (global servers)
+    if let Some(mcp) = root["mcpServers"].as_object() {
+        for server in parse_server_map(mcp, ClientKind::ClaudeCodeGlobal, &src) {
+            seen.insert(server.name.clone());
+            result.servers.push(server);
+        }
+    }
+
+    // Per-project mcpServers (deduplicate by name)
     if let Some(projects) = root["projects"].as_object() {
         for (_project_path, project_val) in projects {
             if let Some(mcp) = project_val["mcpServers"].as_object() {
-                result
-                    .servers
-                    .extend(parse_server_map(mcp, ClientKind::ClaudeCodeGlobal, &src));
+                for server in parse_server_map(mcp, ClientKind::ClaudeCodeGlobal, &src) {
+                    if seen.insert(server.name.clone()) {
+                        result.servers.push(server);
+                    }
+                }
             }
         }
     }

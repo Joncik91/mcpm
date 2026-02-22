@@ -55,8 +55,13 @@ pub fn add_server(
     // Insert server at the right location
     let key = client.servers_key();
 
-    // For ClaudeCodeProject (.mcp.json): check if it uses mcpServers wrapper
-    if *client == ClientKind::ClaudeCodeProject {
+    if *client == ClientKind::ClaudeCodeGlobal {
+        // Add to top-level mcpServers in ~/.claude.json
+        if root.get(key).is_none() {
+            root[key] = json!({});
+        }
+        root[key][name] = server_value.clone();
+    } else if *client == ClientKind::ClaudeCodeProject {
         if root.get("mcpServers").is_some() {
             // Wrapped format — insert under mcpServers
             root["mcpServers"][name] = server_value.clone();
@@ -91,7 +96,20 @@ pub fn remove_server(
 
     let key = client.servers_key();
 
-    if *client == ClientKind::ClaudeCodeProject {
+    if *client == ClientKind::ClaudeCodeGlobal {
+        // Remove from top-level mcpServers
+        if let Some(obj) = root.get_mut("mcpServers").and_then(Value::as_object_mut) {
+            obj.remove(name);
+        }
+        // Remove from all project entries
+        if let Some(projects) = root.get_mut("projects").and_then(Value::as_object_mut) {
+            for (_project_path, project_val) in projects.iter_mut() {
+                if let Some(mcp) = project_val.get_mut("mcpServers").and_then(Value::as_object_mut) {
+                    mcp.remove(name);
+                }
+            }
+        }
+    } else if *client == ClientKind::ClaudeCodeProject {
         // Check both wrapped and flat
         if let Some(obj) = root.get_mut("mcpServers").and_then(Value::as_object_mut) {
             obj.remove(name);

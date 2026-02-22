@@ -28,9 +28,10 @@ impl ClientKind {
         }
     }
 
-    /// Writable client variants (excludes CC-Global which is read-only in mcpm)
+    /// Writable client variants
     pub fn writable() -> &'static [ClientKind] {
         &[
+            ClientKind::ClaudeCodeGlobal,
             ClientKind::ClaudeCodeProject,
             ClientKind::CursorGlobal,
             ClientKind::CursorProject,
