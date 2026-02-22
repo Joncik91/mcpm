@@ -47,13 +47,24 @@ Requires Rust 1.75+.
 git clone https://github.com/Joncik91/mcpm.git
 cd mcpm
 cargo build --release
-# Binary at ./target/release/mcpm
 ```
 
-Optionally copy to your PATH:
+Then add it to your PATH (pick one):
 
 ```bash
-cp target/release/mcpm ~/.cargo/bin/
+# Option A: install via cargo
+cargo install --path .
+
+# Option B: copy to a directory in your PATH
+cp target/release/mcpm ~/.cargo/bin/       # Unix/macOS
+copy target\release\mcpm.exe %USERPROFILE%\.cargo\bin\   # Windows
+```
+
+Or run directly without installing:
+
+```bash
+./target/release/mcpm          # Unix/macOS
+.\target\release\mcpm.exe      # Windows
 ```
 
 ## Usage
