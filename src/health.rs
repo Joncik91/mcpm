@@ -72,7 +72,7 @@ fn check_stdio(
     };
 
     // Write initialize message to stdin
-    if let Some(mut stdin) = child.stdin.take() {
+    let _stdin_handle = child.stdin.take().and_then(|mut stdin| {
         // MCP uses Content-Length header framing for stdio, but many servers
         // also accept bare JSON. Send with header for compatibility.
         let msg = format!(
@@ -82,8 +82,10 @@ fn check_stdio(
         );
         let _ = stdin.write_all(msg.as_bytes());
         let _ = stdin.flush();
-        // Drop stdin to signal EOF
-    }
+        // Keep stdin alive — dropping it sends EOF which causes many MCP
+        // servers (e.g. @modelcontextprotocol/sdk) to shut down immediately.
+        Some(stdin)
+    });
 
     // Read stdout with timeout
     let stdout = match child.stdout.take() {
