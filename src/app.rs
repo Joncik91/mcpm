@@ -209,11 +209,12 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
             if let Some(server) = app.selected_server() {
                 let name = server.name.clone();
                 let clients = app.clients_with_server(&name);
-                // Filter to writable clients only
-                let writable: HashSet<ClientKind> =
+                // Filter to deletable clients (writable + plugins)
+                let mut deletable: HashSet<ClientKind> =
                     ClientKind::writable().iter().cloned().collect();
+                deletable.insert(ClientKind::ClaudeCodePlugin);
                 let writable_clients: Vec<ClientKind> =
-                    clients.into_iter().filter(|c| writable.contains(c)).collect();
+                    clients.into_iter().filter(|c| deletable.contains(c)).collect();
                 if writable_clients.is_empty() {
                     app.set_status("No writable configs for this server".to_string());
                 } else {
@@ -371,8 +372,25 @@ fn execute_remove(app: &mut App) {
     let mut errors = Vec::new();
     let mut success_count = 0;
 
+    // For plugin servers, find the source_path
+    let plugin_source: Option<String> = app
+        .result
+        .servers
+        .iter()
+        .find(|s| s.name == name && s.client == ClientKind::ClaudeCodePlugin)
+        .map(|s| s.source_path.clone());
+
     for client in &clients {
-        match config_writer::remove_server(client, &app.cwd, &name) {
+        let res = if *client == ClientKind::ClaudeCodePlugin {
+            if let Some(ref src) = plugin_source {
+                config_writer::remove_plugin_server(&app.cwd, &name, src)
+            } else {
+                Err("plugin source path not found".to_string())
+            }
+        } else {
+            config_writer::remove_server(client, &app.cwd, &name)
+        };
+        match res {
             Ok(()) => success_count += 1,
             Err(e) => errors.push(format!("{}: {}", client.label(), e)),
         }

@@ -3,6 +3,8 @@ use std::path::Path;
 
 use serde_json::{json, Map, Value};
 
+use std::path::PathBuf;
+
 use crate::types::ClientKind;
 
 /// Build a stdio server JSON value from wizard inputs
@@ -80,15 +82,36 @@ pub fn add_server(
     write_atomic(&path, &root)
 }
 
-/// Remove a server from a client's config file
+/// Remove a server from a client's config file.
+/// For ClaudeCodePlugin, pass the source_path as `plugin_source`.
 pub fn remove_server(
     client: &ClientKind,
     cwd: &Path,
     name: &str,
 ) -> Result<(), String> {
-    let path = client
-        .config_path(cwd)
-        .ok_or("could not determine config path")?;
+    remove_server_inner(client, cwd, name, None)
+}
+
+/// Remove a plugin server using its source path
+pub fn remove_plugin_server(
+    cwd: &Path,
+    name: &str,
+    source_path: &str,
+) -> Result<(), String> {
+    remove_server_inner(&ClientKind::ClaudeCodePlugin, cwd, name, Some(source_path))
+}
+
+fn remove_server_inner(
+    client: &ClientKind,
+    cwd: &Path,
+    name: &str,
+    plugin_source: Option<&str>,
+) -> Result<(), String> {
+    let path = if *client == ClientKind::ClaudeCodePlugin {
+        PathBuf::from(plugin_source.ok_or("plugin source path required")?)
+    } else {
+        client.config_path(cwd).ok_or("could not determine config path")?
+    };
 
     let mut root = read_or_empty(&path)?;
 
@@ -108,6 +131,11 @@ pub fn remove_server(
                     mcp.remove(name);
                 }
             }
+        }
+    } else if *client == ClientKind::ClaudeCodePlugin {
+        // Flat format — remove server key from root
+        if let Some(obj) = root.as_object_mut() {
+            obj.remove(name);
         }
     } else if *client == ClientKind::ClaudeCodeProject {
         // Check both wrapped and flat

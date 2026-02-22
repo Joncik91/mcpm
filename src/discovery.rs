@@ -13,6 +13,7 @@ pub fn discover(cwd: &Path) -> DiscoveryResult {
     let mut result = DiscoveryResult::default();
 
     scan_claude_code_global(&mut result);
+    scan_claude_code_plugins(&mut result);
     scan_mcp_json(cwd, &mut result);
     scan_wrapped(home(".cursor/mcp.json"), ClientKind::CursorGlobal, &mut result);
     scan_wrapped(cwd.join(".cursor/mcp.json"), ClientKind::CursorProject, &mut result);
@@ -152,6 +153,31 @@ fn scan_claude_code_global(result: &mut DiscoveryResult) {
                         result.servers.push(server);
                     }
                 }
+            }
+        }
+    }
+}
+
+/// ~/.claude/plugins/marketplaces/*/external_plugins/*/.mcp.json
+fn scan_claude_code_plugins(result: &mut DiscoveryResult) {
+    let plugins_dir = home(".claude/plugins/marketplaces");
+    let Ok(marketplaces) = std::fs::read_dir(&plugins_dir) else {
+        return;
+    };
+    for marketplace in marketplaces.flatten() {
+        let ext_dir = marketplace.path().join("external_plugins");
+        let Ok(plugins) = std::fs::read_dir(&ext_dir) else {
+            continue;
+        };
+        for plugin in plugins.flatten() {
+            let mcp_json = plugin.path().join(".mcp.json");
+            let Some((root, src)) = read_json_with_errors(&mcp_json, &mut result.errors) else {
+                continue;
+            };
+            if let Some(obj) = root.as_object() {
+                result
+                    .servers
+                    .extend(parse_server_map(obj, ClientKind::ClaudeCodePlugin, &src));
             }
         }
     }

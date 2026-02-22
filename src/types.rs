@@ -7,6 +7,7 @@ use std::time::Instant;
 pub enum ClientKind {
     ClaudeCodeGlobal,
     ClaudeCodeProject,
+    ClaudeCodePlugin,
     CursorGlobal,
     CursorProject,
     VsCodeProject,
@@ -20,6 +21,7 @@ impl ClientKind {
         match self {
             ClientKind::ClaudeCodeGlobal => "CC-Global",
             ClientKind::ClaudeCodeProject => "CC-Project",
+            ClientKind::ClaudeCodePlugin => "CC-Plugin",
             ClientKind::CursorGlobal => "Cursor",
             ClientKind::CursorProject => "Cur-Proj",
             ClientKind::VsCodeProject => "VSCode",
@@ -47,6 +49,7 @@ impl ClientKind {
         Some(match self {
             ClientKind::ClaudeCodeGlobal => home.join(".claude.json"),
             ClientKind::ClaudeCodeProject => cwd.join(".mcp.json"),
+            ClientKind::ClaudeCodePlugin => return None, // per-server paths, use source_path
             ClientKind::CursorGlobal => home.join(".cursor/mcp.json"),
             ClientKind::CursorProject => cwd.join(".cursor/mcp.json"),
             ClientKind::VsCodeProject => cwd.join(".vscode/mcp.json"),
@@ -75,6 +78,7 @@ impl ClientKind {
         &[
             ClientKind::ClaudeCodeGlobal,
             ClientKind::ClaudeCodeProject,
+            ClientKind::ClaudeCodePlugin,
             ClientKind::CursorGlobal,
             ClientKind::CursorProject,
             ClientKind::VsCodeProject,
