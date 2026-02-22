@@ -73,13 +73,10 @@ fn check_stdio(
 
     // Write initialize message to stdin
     let _stdin_handle = child.stdin.take().and_then(|mut stdin| {
-        // MCP uses Content-Length header framing for stdio, but many servers
-        // also accept bare JSON. Send with header for compatibility.
-        let msg = format!(
-            "Content-Length: {}\r\n\r\n{}",
-            INITIALIZE_MSG.len(),
-            INITIALIZE_MSG
-        );
+        // Send bare JSON with trailing newline — this is the most compatible
+        // format. Content-Length framing can cause issues with some SDK
+        // implementations that use line-based stdin readers.
+        let msg = format!("{}\n", INITIALIZE_MSG);
         let _ = stdin.write_all(msg.as_bytes());
         let _ = stdin.flush();
         // Keep stdin alive — dropping it sends EOF which causes many MCP
