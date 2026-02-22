@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::time::Instant;
 
 use ratatui::{
     layout::{Constraint, Layout, Rect},
@@ -9,15 +10,15 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::types::Transport;
+use crate::types::{HealthStatus, Transport};
 
 pub fn render(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
-    // Compute matrix height: unique server names + 2 (border + header), capped at 12
-    let unique_names: BTreeSet<&str> = app.result.servers.iter().map(|s| s.name.as_str()).collect();
+    let unique_names: BTreeSet<&str> =
+        app.result.servers.iter().map(|s| s.name.as_str()).collect();
     let matrix_height = if app.result.active_clients.is_empty() {
-        3 // just the empty bordered box
+        3
     } else {
         (unique_names.len() + 3).min(14) as u16
     };
@@ -46,6 +47,11 @@ fn render_header(f: &mut Frame, area: Rect, app: &App) {
     } else {
         String::new()
     };
+    let checking = if app.checking_count > 0 {
+        format!(" [checking {}...]", app.checking_count)
+    } else {
+        String::new()
+    };
 
     let line = Line::from(vec![
         Span::styled(
@@ -55,13 +61,14 @@ fn render_header(f: &mut Frame, area: Rect, app: &App) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(format!(
-            " — {} server{}{}  ",
+            " — {} server{}{}{}  ",
             server_count,
             if server_count == 1 { "" } else { "s" },
             err_indicator,
+            checking,
         )),
         Span::styled(
-            "[r]efresh [e]rrors [q]uit [j/k]nav",
+            "[h]ealth [H]all [r]efresh [e]rrors [q]uit",
             Style::default().fg(Color::DarkGray),
         ),
     ]);
@@ -69,8 +76,8 @@ fn render_header(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_main_panels(f: &mut Frame, area: Rect, app: &mut App) {
-    let horizontal = Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(area);
+    let horizontal =
+        Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)]).split(area);
 
     render_server_list(f, horizontal[0], app);
     render_detail(f, horizontal[1], app);
@@ -82,8 +89,23 @@ fn render_server_list(f: &mut Frame, area: Rect, app: &mut App) {
         .servers
         .iter()
         .map(|s| {
-            let label = format!(" {:<18} {}", truncate(&s.name, 18), s.client.label());
-            ListItem::new(label)
+            let health_sym = s.health.symbol();
+            let health_color = health_color(&s.health);
+
+            let mut spans = vec![Span::raw(format!(
+                " {:<18} {:<10}",
+                truncate(&s.name, 18),
+                s.client.label()
+            ))];
+
+            if !health_sym.is_empty() {
+                spans.push(Span::styled(
+                    format!(" {}", health_sym),
+                    Style::default().fg(health_color),
+                ));
+            }
+
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
@@ -155,20 +177,83 @@ fn build_detail_lines(s: &crate::types::McpServer) -> Vec<Line<'static>> {
         Transport::Unknown => {}
     }
 
+    // Env vars — mask values for security
     if let Some(env) = &s.env {
         lines.push(section_line("Environment"));
-        for (k, v) in env {
-            lines.push(indent_kv(k, v));
+        for (k, _) in env {
+            lines.push(indent_kv(k, "***"));
         }
-    } else {
+    }
+
+    // Health status section
+    lines.push(Line::from(""));
+    let color = health_color(&s.health);
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("  {:<12}", "Health"),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("{} {}", s.health.symbol(), s.health.label()),
+            Style::default().fg(color),
+        ),
+    ]));
+
+    // Last checked
+    let checked_text = match s.last_checked {
+        Some(t) => format_elapsed(t),
+        None => "never".to_string(),
+    };
+    lines.push(kv_line("Checked", &checked_text));
+
+    // Server info from health check
+    if let HealthStatus::Healthy {
+        server_name,
+        server_version,
+    } = &s.health
+    {
+        lines.push(kv_line("Server", &format!("{} v{}", server_name, server_version)));
+    }
+
+    // Hint for stdio servers
+    if s.transport.is_stdio() && matches!(s.health, HealthStatus::Unchecked) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "  No environment variables",
+            "  Press [h] to health check this server",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else if !s.transport.is_stdio() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Health checks only available for stdio servers",
             Style::default().fg(Color::DarkGray),
         )));
     }
 
     lines
+}
+
+fn health_color(status: &HealthStatus) -> Color {
+    match status {
+        HealthStatus::Unchecked => Color::DarkGray,
+        HealthStatus::Checking => Color::Yellow,
+        HealthStatus::Healthy { .. } => Color::Green,
+        HealthStatus::Timeout => Color::Yellow,
+        HealthStatus::Error(_) => Color::Red,
+    }
+}
+
+fn format_elapsed(since: Instant) -> String {
+    let secs = since.elapsed().as_secs();
+    if secs < 60 {
+        format!("{}s ago", secs)
+    } else if secs < 3600 {
+        format!("{}m ago", secs / 60)
+    } else {
+        format!("{}h ago", secs / 3600)
+    }
 }
 
 fn kv_line(key: &str, value: &str) -> Line<'static> {
@@ -214,7 +299,6 @@ fn render_matrix(f: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    // Deduplicate server names preserving discovery order
     let mut unique_names: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for s in &app.result.servers {
@@ -223,9 +307,10 @@ fn render_matrix(f: &mut Frame, area: Rect, app: &App) {
         }
     }
 
-    // Build lookup: server_name -> set of clients
-    let mut server_clients: std::collections::HashMap<&str, std::collections::HashSet<&crate::types::ClientKind>> =
-        std::collections::HashMap::new();
+    let mut server_clients: std::collections::HashMap<
+        &str,
+        std::collections::HashSet<&crate::types::ClientKind>,
+    > = std::collections::HashMap::new();
     for s in &app.result.servers {
         server_clients
             .entry(&s.name)
@@ -233,7 +318,6 @@ fn render_matrix(f: &mut Frame, area: Rect, app: &App) {
             .insert(&s.client);
     }
 
-    // Header row
     let header_cells: Vec<Cell> = std::iter::once(Cell::from(""))
         .chain(clients.iter().map(|c| {
             Cell::from(c.label()).style(
@@ -245,7 +329,6 @@ fn render_matrix(f: &mut Frame, area: Rect, app: &App) {
         .collect();
     let header = Row::new(header_cells);
 
-    // Data rows
     let rows: Vec<Row> = unique_names
         .iter()
         .map(|name| {

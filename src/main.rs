@@ -1,5 +1,6 @@
 use std::io;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use crossterm::{
@@ -10,6 +11,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 
 mod app;
 mod discovery;
+mod health;
 mod types;
 mod ui;
 
@@ -24,18 +26,28 @@ struct Cli {
 enum Commands {
     /// List all discovered MCP servers as plain text (no TUI)
     List,
+    /// Run health checks on all stdio servers and print results
+    Check,
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     match cli.command {
-        Some(Commands::List) => cmd_list(&cwd),
-        None => run_tui(cwd)?,
+        Some(Commands::List) => {
+            cmd_list(&cwd);
+            ExitCode::SUCCESS
+        }
+        Some(Commands::Check) => cmd_check(&cwd),
+        None => match run_tui(cwd) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                ExitCode::FAILURE
+            }
+        },
     }
-
-    Ok(())
 }
 
 fn cmd_list(cwd: &PathBuf) {
@@ -68,6 +80,58 @@ fn cmd_list(cwd: &PathBuf) {
     }
 }
 
+fn cmd_check(cwd: &PathBuf) -> ExitCode {
+    let result = discovery::discover(cwd);
+
+    let stdio_servers: Vec<(usize, &types::McpServer)> = result
+        .servers
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.transport.is_stdio())
+        .collect();
+
+    if stdio_servers.is_empty() {
+        println!("No stdio servers found to health check.");
+        return ExitCode::SUCCESS;
+    }
+
+    println!(
+        "Checking {} stdio server{}...\n",
+        stdio_servers.len(),
+        if stdio_servers.len() == 1 { "" } else { "s" }
+    );
+
+    let mut any_failed = false;
+
+    for (i, server) in &stdio_servers {
+        let hr = health::check_server(*i, server);
+        match &hr.status {
+            types::HealthStatus::Healthy {
+                server_name,
+                server_version,
+            } => {
+                println!("  \x1b[32m✓\x1b[0m {:<25} ({} v{})", server.name, server_name, server_version);
+            }
+            types::HealthStatus::Timeout => {
+                println!("  \x1b[33m⚠\x1b[0m {:<25} timeout (5s)", server.name);
+                any_failed = true;
+            }
+            types::HealthStatus::Error(e) => {
+                println!("  \x1b[31m✗\x1b[0m {:<25} {}", server.name, e);
+                any_failed = true;
+            }
+            _ => {}
+        }
+    }
+
+    println!();
+    if any_failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
 fn run_tui(cwd: PathBuf) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -86,7 +150,6 @@ fn run_tui(cwd: PathBuf) -> io::Result<()> {
         }
     };
 
-    // Always restore terminal, even on error
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 

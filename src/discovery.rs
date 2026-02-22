@@ -113,6 +113,8 @@ fn parse_server_map(
             source_path: source.to_string(),
             transport: parse_transport(obj),
             env: parse_string_map(obj.get("env")),
+            health: HealthStatus::Unchecked,
+            last_checked: None,
         })
         .collect()
 }
