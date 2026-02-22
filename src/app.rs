@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::config_writer;
 use crate::discovery::discover;
@@ -174,7 +174,7 @@ pub fn handle_event(app: &mut App) -> std::io::Result<(bool, Option<PathBuf>)> {
     app.tick_status();
 
     if event::poll(std::time::Duration::from_millis(200))? {
-        if let Event::Key(key) = event::read()? {
+        if let Event::Key(key @ KeyEvent { kind: KeyEventKind::Press, .. }) = event::read()? {
             // Ctrl-C always exits
             if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
                 return Ok((true, None));
