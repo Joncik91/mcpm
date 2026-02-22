@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 /// Which client configuration file a server was found in
@@ -24,6 +25,47 @@ impl ClientKind {
             ClientKind::VsCodeProject => "VSCode",
             ClientKind::Windsurf => "Windsurf",
             ClientKind::ClaudeDesktop => "Desktop",
+        }
+    }
+
+    /// Writable client variants (excludes CC-Global which is read-only in mcpm)
+    pub fn writable() -> &'static [ClientKind] {
+        &[
+            ClientKind::ClaudeCodeProject,
+            ClientKind::CursorGlobal,
+            ClientKind::CursorProject,
+            ClientKind::VsCodeProject,
+            ClientKind::Windsurf,
+            ClientKind::ClaudeDesktop,
+        ]
+    }
+
+    /// Filesystem path to this client's config file
+    pub fn config_path(&self, cwd: &Path) -> Option<PathBuf> {
+        let home = dirs::home_dir()?;
+        Some(match self {
+            ClientKind::ClaudeCodeGlobal => home.join(".claude.json"),
+            ClientKind::ClaudeCodeProject => cwd.join(".mcp.json"),
+            ClientKind::CursorGlobal => home.join(".cursor/mcp.json"),
+            ClientKind::CursorProject => cwd.join(".cursor/mcp.json"),
+            ClientKind::VsCodeProject => cwd.join(".vscode/mcp.json"),
+            ClientKind::Windsurf => home.join(".codeium/windsurf/mcp_config.json"),
+            ClientKind::ClaudeDesktop => {
+                let mac = home.join("Library/Application Support/Claude/claude_desktop_config.json");
+                if mac.parent().is_some_and(|p| p.exists()) {
+                    mac
+                } else {
+                    home.join(".config/Claude/claude_desktop_config.json")
+                }
+            }
+        })
+    }
+
+    /// The JSON key that holds servers in this client's config
+    pub fn servers_key(&self) -> &'static str {
+        match self {
+            ClientKind::VsCodeProject => "servers",
+            _ => "mcpServers",
         }
     }
 

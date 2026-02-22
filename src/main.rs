@@ -10,10 +10,12 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 mod app;
+mod config_writer;
 mod discovery;
 mod health;
 mod types;
 mod ui;
+mod wizard;
 
 #[derive(Parser)]
 #[command(name = "mcpm", version, about = "MCP Server Manager — see all your MCP servers across all clients")]
@@ -110,7 +112,10 @@ fn cmd_check(cwd: &PathBuf) -> ExitCode {
                 server_name,
                 server_version,
             } => {
-                println!("  \x1b[32m✓\x1b[0m {:<25} ({} v{})", server.name, server_name, server_version);
+                println!(
+                    "  \x1b[32m✓\x1b[0m {:<25} ({} v{})",
+                    server.name, server_name, server_version
+                );
             }
             types::HealthStatus::Timeout => {
                 println!("  \x1b[33m⚠\x1b[0m {:<25} timeout (5s)", server.name);
@@ -144,8 +149,23 @@ fn run_tui(cwd: PathBuf) -> io::Result<()> {
     let result = loop {
         terminal.draw(|f| ui::render(f, &mut app_state))?;
         match app::handle_event(&mut app_state) {
-            Ok(true) => break Ok(()),
-            Ok(false) => {}
+            Ok((true, _)) => break Ok(()),
+            Ok((false, Some(editor_path))) => {
+                // Exit TUI, run $EDITOR, re-enter TUI
+                disable_raw_mode()?;
+                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+
+                let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                let _ = std::process::Command::new(&editor)
+                    .arg(&editor_path)
+                    .status();
+
+                enable_raw_mode()?;
+                execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                terminal.clear()?;
+                app_state.refresh();
+            }
+            Ok((false, None)) => {}
             Err(e) => break Err(e),
         }
     };
