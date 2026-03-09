@@ -159,17 +159,24 @@ fn scan_claude_code_global(result: &mut DiscoveryResult) {
 }
 
 /// ~/.claude/plugins/marketplaces/*/external_plugins/*/.mcp.json
+/// Only scans plugins that are actually installed (have a matching plugins/ entry).
 fn scan_claude_code_plugins(result: &mut DiscoveryResult) {
     let plugins_dir = home(".claude/plugins/marketplaces");
     let Ok(marketplaces) = std::fs::read_dir(&plugins_dir) else {
         return;
     };
     for marketplace in marketplaces.flatten() {
+        let installed_dir = marketplace.path().join("plugins");
         let ext_dir = marketplace.path().join("external_plugins");
         let Ok(plugins) = std::fs::read_dir(&ext_dir) else {
             continue;
         };
         for plugin in plugins.flatten() {
+            // Only include if a matching plugins/<name> directory exists (installed)
+            let name = plugin.file_name();
+            if !installed_dir.join(&name).is_dir() {
+                continue;
+            }
             let mcp_json = plugin.path().join(".mcp.json");
             let Some((root, src)) = read_json_with_errors(&mcp_json, &mut result.errors) else {
                 continue;
