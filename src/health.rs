@@ -8,7 +8,12 @@ use crate::types::{HealthResult, HealthStatus, McpServer, Transport};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
-const INITIALIZE_MSG: &str = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-05","capabilities":{},"clientInfo":{"name":"mcpm","version":"1.1.0"}}}"#;
+fn initialize_msg() -> String {
+    format!(
+        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2025-11-05","capabilities":{{}},"clientInfo":{{"name":"mcpm","version":"{}"}}}}}}"#,
+        env!("CARGO_PKG_VERSION")
+    )
+}
 
 /// Run a health check synchronously. Returns the HealthResult.
 pub fn check_server(index: usize, server: &McpServer) -> HealthResult {
@@ -76,7 +81,7 @@ fn check_stdio(
         // Send bare JSON with trailing newline — this is the most compatible
         // format. Content-Length framing can cause issues with some SDK
         // implementations that use line-based stdin readers.
-        let msg = format!("{}\n", INITIALIZE_MSG);
+        let msg = format!("{}\n", initialize_msg());
         let _ = stdin.write_all(msg.as_bytes());
         let _ = stdin.flush();
         // Keep stdin alive — dropping it sends EOF which causes many MCP

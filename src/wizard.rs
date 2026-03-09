@@ -26,8 +26,10 @@ impl Default for Mode {
 pub struct AddWizard {
     pub step: AddStep,
     pub name: String,
+    pub transport_type: usize, // 0=stdio, 1=http, 2=sse
     pub command: String,
     pub args: String,
+    pub url: String,
     pub env_lines: Vec<String>,
     pub env_input: String,
     pub clients: Vec<(ClientKind, bool)>,
@@ -38,8 +40,10 @@ pub struct AddWizard {
 #[derive(PartialEq)]
 pub enum AddStep {
     Name,
+    TransportType,
     Command,
     Args,
+    Url,
     EnvVars,
     Clients,
     Confirm,
@@ -57,8 +61,10 @@ impl AddWizard {
         AddWizard {
             step: AddStep::Name,
             name: String::new(),
+            transport_type: 0,
             command: String::new(),
             args: String::new(),
+            url: String::new(),
             env_lines: Vec::new(),
             env_input: String::new(),
             clients,
@@ -73,6 +79,7 @@ impl AddWizard {
             AddStep::Name => &self.name,
             AddStep::Command => &self.command,
             AddStep::Args => &self.args,
+            AddStep::Url => &self.url,
             AddStep::EnvVars => &self.env_input,
             _ => "",
         }
@@ -85,6 +92,7 @@ impl AddWizard {
             AddStep::Name => self.name.push(c),
             AddStep::Command => self.command.push(c),
             AddStep::Args => self.args.push(c),
+            AddStep::Url => self.url.push(c),
             AddStep::EnvVars => self.env_input.push(c),
             _ => {}
         }
@@ -96,8 +104,19 @@ impl AddWizard {
             AddStep::Name => { self.name.pop(); }
             AddStep::Command => { self.command.pop(); }
             AddStep::Args => { self.args.pop(); }
+            AddStep::Url => { self.url.pop(); }
             AddStep::EnvVars => { self.env_input.pop(); }
             _ => {}
+        }
+    }
+
+    /// Transport type label for display
+    pub fn transport_type_label(&self) -> &'static str {
+        match self.transport_type {
+            0 => "stdio",
+            1 => "http",
+            2 => "sse",
+            _ => "stdio",
         }
     }
 
@@ -109,7 +128,14 @@ impl AddWizard {
                     self.error = Some("Server name cannot be empty".to_string());
                     return false;
                 }
-                self.step = AddStep::Command;
+                self.step = AddStep::TransportType;
+            }
+            AddStep::TransportType => {
+                if self.transport_type == 0 {
+                    self.step = AddStep::Command;
+                } else {
+                    self.step = AddStep::Url;
+                }
             }
             AddStep::Command => {
                 if self.command.trim().is_empty() {
@@ -119,6 +145,13 @@ impl AddWizard {
                 self.step = AddStep::Args;
             }
             AddStep::Args => {
+                self.step = AddStep::EnvVars;
+            }
+            AddStep::Url => {
+                if self.url.trim().is_empty() {
+                    self.error = Some("URL cannot be empty".to_string());
+                    return false;
+                }
                 self.step = AddStep::EnvVars;
             }
             AddStep::EnvVars => {
@@ -201,8 +234,10 @@ impl AddWizard {
     pub fn step_label(&self) -> &'static str {
         match self.step {
             AddStep::Name => "Server Name",
+            AddStep::TransportType => "Transport Type",
             AddStep::Command => "Command",
             AddStep::Args => "Arguments (space-separated)",
+            AddStep::Url => "Server URL",
             AddStep::EnvVars => "Environment Variables",
             AddStep::Clients => "Install to Clients",
             AddStep::Confirm => "Confirm",

@@ -31,6 +31,52 @@ pub fn build_server_value(
     Value::Object(obj)
 }
 
+/// Build an HTTP server JSON value
+pub fn build_http_server_value(
+    url: &str,
+    headers: Option<&HashMap<String, String>>,
+    env: &HashMap<String, String>,
+) -> Value {
+    let mut obj = Map::new();
+    obj.insert("type".to_string(), Value::String("http".to_string()));
+    obj.insert("url".to_string(), Value::String(url.to_string()));
+    if let Some(h) = headers {
+        if !h.is_empty() {
+            let hdr_obj: Map<String, Value> = h
+                .iter()
+                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                .collect();
+            obj.insert("headers".to_string(), Value::Object(hdr_obj));
+        }
+    }
+    if !env.is_empty() {
+        let env_obj: Map<String, Value> = env
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect();
+        obj.insert("env".to_string(), Value::Object(env_obj));
+    }
+    Value::Object(obj)
+}
+
+/// Build an SSE server JSON value
+pub fn build_sse_server_value(
+    url: &str,
+    env: &HashMap<String, String>,
+) -> Value {
+    let mut obj = Map::new();
+    obj.insert("type".to_string(), Value::String("sse".to_string()));
+    obj.insert("url".to_string(), Value::String(url.to_string()));
+    if !env.is_empty() {
+        let env_obj: Map<String, Value> = env
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect();
+        obj.insert("env".to_string(), Value::Object(env_obj));
+    }
+    Value::Object(obj)
+}
+
 /// Add a server to a client's config file
 pub fn add_server(
     client: &ClientKind,
@@ -151,6 +197,31 @@ fn remove_server_inner(
     }
 
     write_atomic(&path, &root)
+}
+
+/// Restore the most recent backup for a client's config file.
+/// Swaps current ↔ backup so the undo is itself undoable.
+pub fn restore_backup(client: &ClientKind, cwd: &Path) -> Result<(), String> {
+    let path = client
+        .config_path(cwd)
+        .ok_or("could not determine config path")?;
+    let bak = path.with_extension("bak");
+    if !bak.exists() {
+        return Err("no backup file found".to_string());
+    }
+    // Swap current and backup
+    let tmp = path.with_extension("undo_tmp");
+    if path.exists() {
+        std::fs::copy(&path, &tmp)
+            .map_err(|e| format!("failed to save current: {}", e))?;
+    }
+    std::fs::rename(&bak, &path)
+        .map_err(|e| format!("failed to restore backup: {}", e))?;
+    if tmp.exists() {
+        std::fs::rename(&tmp, &bak)
+            .map_err(|e| format!("failed to rotate backup: {}", e))?;
+    }
+    Ok(())
 }
 
 fn read_or_empty(path: &Path) -> Result<Value, String> {

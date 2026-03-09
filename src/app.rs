@@ -154,15 +154,18 @@ impl App {
 
     /// Build a server's JSON value from its transport + env
     pub fn server_to_value(&self, server: &McpServer) -> serde_json::Value {
+        let env = server.env.clone().unwrap_or_default();
         match &server.transport {
             Transport::Stdio { command, args } => {
-                config_writer::build_server_value(
-                    command,
-                    args,
-                    &server.env.clone().unwrap_or_default(),
-                )
+                config_writer::build_server_value(command, args, &env)
             }
-            _ => serde_json::json!({}),
+            Transport::Http { url, headers } => {
+                config_writer::build_http_server_value(url, headers.as_ref(), &env)
+            }
+            Transport::Sse { url } => {
+                config_writer::build_sse_server_value(url, &env)
+            }
+            Transport::Unknown => serde_json::json!({}),
         }
     }
 }
@@ -197,7 +200,7 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
         KeyCode::Char('r') => app.refresh(),
         KeyCode::Char('!') => app.show_errors = !app.show_errors,
         KeyCode::Char('h') => app.check_selected(),
-        KeyCode::Char('H') => app.check_all(),
+        KeyCode::Char('c') => app.check_all(),
         KeyCode::Up | KeyCode::Char('k') => app.move_up(),
         KeyCode::Down | KeyCode::Char('j') => app.move_down(),
         KeyCode::PageUp => app.scroll_detail_up(),
@@ -234,6 +237,19 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
                 }
             }
         }
+        KeyCode::Char('u') => {
+            // Undo: restore from .bak file for the selected server's client
+            if let Some(server) = app.selected_server() {
+                let client = server.client.clone();
+                match config_writer::restore_backup(&client, &app.cwd) {
+                    Ok(()) => {
+                        app.refresh();
+                        app.set_status(format!("Restored backup for {}", client.label()));
+                    }
+                    Err(e) => app.set_status(format!("Undo failed: {}", e)),
+                }
+            }
+        }
         KeyCode::Char('e') => {
             // Open selected server's config in $EDITOR
             if let Some(server) = app.selected_server() {
@@ -262,7 +278,7 @@ fn handle_add_wizard(app: &mut App, key: KeyEvent) {
             app.mode = Mode::Normal;
         }
         _ => match wiz.step {
-            AddStep::Name | AddStep::Command | AddStep::Args | AddStep::EnvVars => {
+            AddStep::Name | AddStep::Command | AddStep::Args | AddStep::Url | AddStep::EnvVars => {
                 match key.code {
                     KeyCode::Char(c) => wiz.push_char(c),
                     KeyCode::Backspace => wiz.pop_char(),
@@ -272,6 +288,20 @@ fn handle_add_wizard(app: &mut App, key: KeyEvent) {
                     _ => {}
                 }
             }
+            AddStep::TransportType => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    wiz.transport_type = wiz.transport_type.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if wiz.transport_type < 2 {
+                        wiz.transport_type += 1;
+                    }
+                }
+                KeyCode::Enter => {
+                    wiz.advance();
+                }
+                _ => {}
+            },
             AddStep::Clients => match key.code {
                 KeyCode::Up | KeyCode::Char('k') => wiz.cursor_up(),
                 KeyCode::Down | KeyCode::Char('j') => wiz.cursor_down(),
@@ -302,7 +332,11 @@ fn execute_add(app: &mut App) {
     let name = wiz.name.trim().to_string();
     let args = wiz.parsed_args();
     let env = wiz.parsed_env();
-    let server_value = config_writer::build_server_value(&wiz.command, &args, &env);
+    let server_value = match wiz.transport_type {
+        1 => config_writer::build_http_server_value(&wiz.url, None, &env),
+        2 => config_writer::build_sse_server_value(&wiz.url, &env),
+        _ => config_writer::build_server_value(&wiz.command, &args, &env),
+    };
     let clients = wiz.selected_clients();
 
     let mut errors = Vec::new();

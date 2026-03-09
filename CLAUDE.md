@@ -1,7 +1,7 @@
 # mcpm
 
 ## Overview
-MCP Server Manager — a Rust TUI/CLI for discovering, viewing, and managing MCP server configurations across 7 client applications (Claude Code, Cursor, VS Code, Windsurf, Claude Desktop).
+MCP Server Manager — a Rust TUI/CLI for discovering, viewing, and managing MCP server configurations across 8 client configurations (Claude Code, Cursor, VS Code, Windsurf, Claude Desktop).
 
 ## Tech Stack
 - Rust (edition 2024)
@@ -23,13 +23,13 @@ cargo fmt --check                  # Check formatting
 No tests, CI, or linting config currently exist.
 
 ## Architecture
-Flat module structure, ~2,370 lines across 8 files:
+Flat module structure, ~2,600 lines across 8 files:
 
 | Module | Purpose |
 |--------|---------|
 | `main.rs` | CLI entry point, clap subcommands (list, check, TUI), event loop |
 | `types.rs` | Core types: `ClientKind`, `Transport`, `HealthStatus`, `McpServer`, `DiscoveryResult` |
-| `discovery.rs` | Scans 7 client config locations, parses JSON, returns unified server list |
+| `discovery.rs` | Scans 8 client config locations, parses JSON, returns unified server list |
 | `app.rs` | Central `App` state machine, input handling, modal transitions |
 | `ui.rs` | Ratatui rendering: header, server list, detail panel, client matrix, modals |
 | `health.rs` | Stdio health checks via JSON-RPC initialize, background threads + mpsc |
@@ -45,7 +45,8 @@ Flat module structure, ~2,370 lines across 8 files:
 - **Errors:** `Result<T, String>` for config operations; non-fatal parse errors collected in `DiscoveryResult.errors`
 - **JSON:** Manual parsing via `serde_json::Value` — no serde derive macros on domain types
 - **Imports:** std first, then external crates, then `crate::` internal modules. Wildcard imports for `types` and `wizard`
-- **File safety:** Every config write creates a `.bak` backup and uses atomic write (`.tmp` + rename)
+- **File safety:** Every config write creates a `.bak` backup and uses atomic write (`.tmp` + rename). Undo restores from `.bak` via swap.
+- **Versions:** Use `env!("CARGO_PKG_VERSION")` for version strings — never hardcode version numbers
 - **UI modals:** State machine via `Mode` enum (Normal, AddWizard, RemoveConfirm, SyncSelect)
 - **Visibility:** Public API per module is minimal; scanner/render helpers are private
 - **Comments:** Section separators with `// ---` in ui.rs; doc comments (`///`) on public types/methods
@@ -59,8 +60,9 @@ Flat module structure, ~2,370 lines across 8 files:
 ## Supported Clients
 | Client | Config Path | Servers Key | Writable |
 |--------|------------|-------------|----------|
-| Claude Code Global | `~/.claude.json` | `mcpServers` | No (read-only) |
+| Claude Code Global | `~/.claude.json` | `mcpServers` | Yes |
 | Claude Code Project | `.mcp.json` | flat or `mcpServers` | Yes |
+| Claude Code Plugin | `~/.claude/plugins/**/external_plugins/**/.mcp.json` | flat | No (read-only discovery) |
 | Cursor Global | `~/.cursor/mcp.json` | `mcpServers` | Yes |
 | Cursor Project | `.cursor/mcp.json` | `mcpServers` | Yes |
 | VS Code Project | `.vscode/mcp.json` | `servers` | Yes |

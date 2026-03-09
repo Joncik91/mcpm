@@ -18,7 +18,7 @@ If you have 5 servers across 3 clients, you're manually editing JSON files and h
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ mcpm v1.2.0 — 5 servers                                         │
+│ mcpm v1.2.1 — 5 servers                                         │
 ├──────────────────────┬───────────────────────────────────────────┤
 │ Servers              │ Detail                                    │
 │                      │                                           │
@@ -36,7 +36,7 @@ If you have 5 servers across 3 clients, you're manually editing JSON files and h
 │ playwright                      ✓                                │
 │ memory                                  ✓                        │
 └──────────────────────────────────────────────────────────────────┘
- a:add  d:remove  s:sync  e:edit  h:check  H:all  !:errors  q:quit
+ a:add  d:remove  s:sync  e:edit  u:undo  h:check  c:check-all  !:errors  q:quit
 ```
 
 ## Install
@@ -92,17 +92,18 @@ mcpm --version
 
 | Key | Action |
 |-----|--------|
-| `a` | Add server — wizard for name, command, args, env, client selection |
+| `a` | Add server — wizard for name, transport (stdio/http/sse), config, client selection |
 | `d` | Remove server from selected clients |
 | `s` | Sync server to clients that don't have it |
 | `e` | Edit config file in `$EDITOR` |
+| `u` | Undo last config change (restore from `.bak`) |
 
 ### Health Checks
 
 | Key | Action |
 |-----|--------|
 | `h` | Health check selected server (stdio only) |
-| `H` | Health check all stdio servers |
+| `c` | Health check all stdio servers |
 | `!` | Toggle parse error overlay |
 
 ## How Health Checks Work
@@ -127,17 +128,18 @@ Health checks run in background threads so the TUI stays responsive.
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (Linux) | `~/.config/Claude/claude_desktop_config.json` | `mcpServers` |
+| Claude Code (plugins) | `~/.claude/plugins/**/external_plugins/**/.mcp.json` | flat (read-only discovery) |
 
 ## Safety
 
 - **Backup before every write** — `.bak` file created alongside the original
 - **Atomic writes** — writes to `.tmp` then renames to prevent corruption
 - **Read-modify-write** — preserves all existing config fields and other servers
-- **`~/.claude.json` is read-only** — mcpm reads from it but writes to `.mcp.json` instead
+- **Undo** — press `u` to restore the previous config from the `.bak` file
 
 ## Tech
 
-- Rust, ~1800 lines
+- Rust, ~2500 lines
 - [ratatui](https://ratatui.rs) + crossterm for TUI
 - serde_json for config parsing/writing
 - No async runtime, no network calls (except spawning local server processes for health checks)

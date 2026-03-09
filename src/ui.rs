@@ -77,7 +77,7 @@ fn render_header(f: &mut Frame, area: Rect, app: &App) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            " v1.2.0",
+            format!(" v{}", env!("CARGO_PKG_VERSION")),
             Style::default().fg(Color::DarkGray),
         ),
         Span::raw(format!(
@@ -104,9 +104,10 @@ fn render_status_bar(f: &mut Frame, area: Rect, app: &App) {
     } else {
         let keys = match &app.mode {
             Mode::Normal => {
-                " a:add  d:remove  s:sync  e:edit  h:check  H:all  !:errors  r:refresh  q:quit"
+                " a:add  d:remove  s:sync  e:edit  u:undo  h:check  c:check-all  !:errors  r:refresh  q:quit"
             }
             Mode::AddWizard(wiz) => match wiz.step {
+                AddStep::TransportType => " j/k:select  enter:next  esc:cancel",
                 AddStep::Clients => " space:toggle  j/k:move  enter:next  esc:cancel",
                 AddStep::Confirm => " y:confirm  n:cancel  esc:cancel",
                 _ => " enter:next  esc:cancel",
@@ -126,7 +127,7 @@ fn render_status_bar(f: &mut Frame, area: Rect, app: &App) {
 }
 
 // ---------------------------------------------------------------------------
-// Main panels (unchanged from v1.1.0 except env masking)
+// Main panels
 // ---------------------------------------------------------------------------
 
 fn render_main_panels(f: &mut Frame, area: Rect, app: &mut App) {
@@ -295,11 +296,12 @@ fn render_add_wizard(f: &mut Frame, area: Rect, wiz: &AddWizard) {
     let mut lines: Vec<Line> = vec![Line::from("")];
 
     match wiz.step {
-        AddStep::Name | AddStep::Command | AddStep::Args => {
+        AddStep::Name | AddStep::Command | AddStep::Args | AddStep::Url => {
             let label = match wiz.step {
                 AddStep::Name => "Server name",
                 AddStep::Command => "Command (e.g. npx, node, uvx)",
                 AddStep::Args => "Arguments (space-separated, or empty)",
+                AddStep::Url => "URL (e.g. http://localhost:3000/mcp)",
                 _ => "",
             };
             lines.push(Line::from(Span::styled(
@@ -314,6 +316,26 @@ fn render_add_wizard(f: &mut Frame, area: Rect, wiz: &AddWizard) {
                 ),
                 Span::styled("█", Style::default().fg(Color::Cyan)),
             ]));
+        }
+        AddStep::TransportType => {
+            lines.push(Line::from(Span::styled(
+                "  Select transport type:",
+                Style::default().fg(Color::Yellow),
+            )));
+            lines.push(Line::from(""));
+            let labels = ["stdio  (local command)", "http   (HTTP URL)", "sse    (SSE URL)"];
+            for (i, label) in labels.iter().enumerate() {
+                let cursor = if i == wiz.transport_type { "▸" } else { " " };
+                let style = if i == wiz.transport_type {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default()
+                };
+                lines.push(Line::from(Span::styled(
+                    format!("  {} {}", cursor, label),
+                    style,
+                )));
+            }
         }
         AddStep::EnvVars => {
             lines.push(Line::from(Span::styled(
@@ -370,11 +392,22 @@ fn render_add_wizard(f: &mut Frame, area: Rect, wiz: &AddWizard) {
             }
             lines.push(Line::from(""));
             lines.push(Line::from(Span::raw(format!(
-                "  Command: {}",
-                wiz.command
+                "  Transport: {}",
+                wiz.transport_type_label()
             ))));
-            if !wiz.args.is_empty() {
-                lines.push(Line::from(Span::raw(format!("  Args:    {}", wiz.args))));
+            if wiz.transport_type == 0 {
+                lines.push(Line::from(Span::raw(format!(
+                    "  Command: {}",
+                    wiz.command
+                ))));
+                if !wiz.args.is_empty() {
+                    lines.push(Line::from(Span::raw(format!("  Args:    {}", wiz.args))));
+                }
+            } else {
+                lines.push(Line::from(Span::raw(format!(
+                    "  URL:     {}",
+                    wiz.url
+                ))));
             }
             if !wiz.env_lines.is_empty() {
                 lines.push(Line::from(Span::raw(format!(
