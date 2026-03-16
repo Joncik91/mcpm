@@ -241,12 +241,26 @@ fn scan_vscode(cwd: &Path, result: &mut DiscoveryResult) {
     }
 }
 
-/// Claude Desktop — try macOS path first, then Linux
+/// Claude Desktop — try platform-specific paths: Windows (APPDATA + MSIX), macOS, Linux
 fn scan_claude_desktop(result: &mut DiscoveryResult) {
-    let candidates = [
-        home("Library/Application Support/Claude/claude_desktop_config.json"),
-        home(".config/Claude/claude_desktop_config.json"),
-    ];
+    let mut candidates = Vec::new();
+
+    // Windows: %APPDATA%\Claude\claude_desktop_config.json
+    if cfg!(windows) {
+        if let Some(data) = dirs::data_dir() {
+            candidates.push(data.join("Claude/claude_desktop_config.json"));
+        }
+        // MSIX fallback
+        if let Some(path) = crate::types::find_msix_claude_config() {
+            candidates.push(path);
+        }
+    }
+
+    // macOS
+    candidates.push(home("Library/Application Support/Claude/claude_desktop_config.json"));
+    // Linux
+    candidates.push(home(".config/Claude/claude_desktop_config.json"));
+
     for path in &candidates {
         if path.exists() {
             scan_wrapped(path.clone(), ClientKind::ClaudeDesktop, result);

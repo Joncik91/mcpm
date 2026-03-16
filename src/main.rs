@@ -155,7 +155,8 @@ fn run_tui(cwd: PathBuf) -> io::Result<()> {
                 disable_raw_mode()?;
                 execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
-                let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                let default_editor = if cfg!(windows) { "notepad" } else { "vi" };
+                let editor = std::env::var("EDITOR").unwrap_or_else(|_| default_editor.to_string());
                 let _ = std::process::Command::new(&editor)
                     .arg(&editor_path)
                     .status();

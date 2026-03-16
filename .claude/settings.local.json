@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(cd /c/Users/Jonci/desktop/apps/mcpm && cargo check 2>&1)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(wc:*)",
+      "Bash(cargo build:*)",
+      "Bash(rustup component:*)",
+      "Bash(git:*)",
+      "Bash(cargo run:*)",
+      "Read(//c/Users/Jonci/Desktop/Apps/mcpm/$HOME/.claude/plugins/marketplaces/claude-plugins-official/plugins/**)",
+      "Read(//c/Users/Jonci/Desktop/Apps/mcpm/$HOME/.claude/plugins/marketplaces/claude-plugins-official/plugins/context7/**)"
+    ]
+  }
+}

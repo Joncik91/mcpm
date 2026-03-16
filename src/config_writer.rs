@@ -166,17 +166,9 @@ fn remove_server_inner(
     let key = client.servers_key();
 
     if *client == ClientKind::ClaudeCodeGlobal {
-        // Remove from top-level mcpServers
+        // Remove from top-level mcpServers only (not project-scoped entries)
         if let Some(obj) = root.get_mut("mcpServers").and_then(Value::as_object_mut) {
             obj.remove(name);
-        }
-        // Remove from all project entries
-        if let Some(projects) = root.get_mut("projects").and_then(Value::as_object_mut) {
-            for (_project_path, project_val) in projects.iter_mut() {
-                if let Some(mcp) = project_val.get_mut("mcpServers").and_then(Value::as_object_mut) {
-                    mcp.remove(name);
-                }
-            }
         }
     } else if *client == ClientKind::ClaudeCodePlugin {
         // Flat format — remove server key from root
@@ -205,12 +197,12 @@ pub fn restore_backup(client: &ClientKind, cwd: &Path) -> Result<(), String> {
     let path = client
         .config_path(cwd)
         .ok_or("could not determine config path")?;
-    let bak = path.with_extension("bak");
+    let bak = path_with_suffix(&path, ".bak");
     if !bak.exists() {
         return Err("no backup file found".to_string());
     }
     // Swap current and backup
-    let tmp = path.with_extension("undo_tmp");
+    let tmp = path_with_suffix(&path, ".undo_tmp");
     if path.exists() {
         std::fs::copy(&path, &tmp)
             .map_err(|e| format!("failed to save current: {}", e))?;
@@ -236,7 +228,7 @@ fn read_or_empty(path: &Path) -> Result<Value, String> {
 
 fn backup(path: &Path) -> Result<(), String> {
     if path.exists() {
-        let bak = path.with_extension("bak");
+        let bak = path_with_suffix(path, ".bak");
         std::fs::copy(path, &bak)
             .map_err(|e| format!("failed to create backup {}: {}", bak.display(), e))?;
     }
@@ -247,10 +239,18 @@ fn write_atomic(path: &Path, value: &Value) -> Result<(), String> {
     let json_str = serde_json::to_string_pretty(value)
         .map_err(|e| format!("failed to serialize JSON: {}", e))?;
 
-    let tmp = path.with_extension("tmp");
+    let tmp = path_with_suffix(path, ".tmp");
     std::fs::write(&tmp, json_str.as_bytes())
         .map_err(|e| format!("failed to write {}: {}", tmp.display(), e))?;
 
     std::fs::rename(&tmp, path)
         .map_err(|e| format!("failed to rename {} to {}: {}", tmp.display(), path.display(), e))
+}
+
+/// Append a suffix to a path's filename (e.g. "foo.json" + ".bak" → "foo.json.bak").
+/// Unlike `with_extension()`, this preserves the original extension.
+fn path_with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(suffix);
+    PathBuf::from(s)
 }

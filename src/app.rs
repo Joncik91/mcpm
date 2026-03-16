@@ -22,6 +22,8 @@ pub struct App {
     pub mode: Mode,
     pub status_message: Option<String>,
     pub status_timer: u8, // frames to show status message
+    pub detail_content_height: usize, // lines in detail panel (set during render)
+    pub detail_visible_height: usize, // visible area of detail panel (set during render)
 }
 
 impl App {
@@ -40,6 +42,8 @@ impl App {
             mode: Mode::Normal,
             status_message: None,
             status_timer: 0,
+            detail_content_height: 0,
+            detail_visible_height: 0,
         }
     }
 
@@ -74,7 +78,12 @@ impl App {
     }
 
     pub fn scroll_detail_down(&mut self) {
-        self.scroll_offset += 1;
+        if self.detail_content_height > self.detail_visible_height {
+            let max_offset = self.detail_content_height - self.detail_visible_height;
+            if self.scroll_offset < max_offset {
+                self.scroll_offset += 1;
+            }
+        }
     }
 
     pub fn check_selected(&mut self) {
@@ -199,7 +208,15 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
         KeyCode::Char('q') => return Ok((true, None)),
         KeyCode::Char('r') => app.refresh(),
         KeyCode::Char('!') => app.show_errors = !app.show_errors,
-        KeyCode::Char('h') => app.check_selected(),
+        KeyCode::Char('h') => {
+            if let Some(server) = app.selected_server() {
+                if !server.transport.is_stdio() {
+                    app.set_status("Health checks only available for stdio servers".to_string());
+                } else {
+                    app.check_selected();
+                }
+            }
+        }
         KeyCode::Char('c') => app.check_all(),
         KeyCode::Up | KeyCode::Char('k') => app.move_up(),
         KeyCode::Down | KeyCode::Char('j') => app.move_down(),
@@ -227,13 +244,17 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
         }
         KeyCode::Char('s') => {
             if let Some(server) = app.selected_server() {
-                let name = server.name.clone();
-                let value = app.server_to_value(server);
-                let missing = app.clients_without_server(&name);
-                if missing.is_empty() {
-                    app.set_status("Server already in all clients".to_string());
+                if matches!(server.transport, Transport::Unknown) {
+                    app.set_status("Cannot sync server with unknown transport".to_string());
                 } else {
-                    app.mode = Mode::SyncSelect(SyncSelect::new(name, value, missing));
+                    let name = server.name.clone();
+                    let value = app.server_to_value(server);
+                    let missing = app.clients_without_server(&name);
+                    if missing.is_empty() {
+                        app.set_status("Server already in all clients".to_string());
+                    } else {
+                        app.mode = Mode::SyncSelect(SyncSelect::new(name, value, missing));
+                    }
                 }
             }
         }
@@ -241,12 +262,16 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
             // Undo: restore from .bak file for the selected server's client
             if let Some(server) = app.selected_server() {
                 let client = server.client.clone();
-                match config_writer::restore_backup(&client, &app.cwd) {
-                    Ok(()) => {
-                        app.refresh();
-                        app.set_status(format!("Restored backup for {}", client.label()));
+                if client == ClientKind::ClaudeCodePlugin {
+                    app.set_status("Cannot undo plugin config changes".to_string());
+                } else {
+                    match config_writer::restore_backup(&client, &app.cwd) {
+                        Ok(()) => {
+                            app.refresh();
+                            app.set_status(format!("Restored backup for {}", client.label()));
+                        }
+                        Err(e) => app.set_status(format!("Undo failed: {}", e)),
                     }
-                    Err(e) => app.set_status(format!("Undo failed: {}", e)),
                 }
             }
         }
@@ -260,6 +285,8 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
                     } else {
                         app.set_status(format!("Config file doesn't exist: {}", path.display()));
                     }
+                } else {
+                    app.set_status("Cannot edit plugin configs — they are read-only".to_string());
                 }
             }
         }

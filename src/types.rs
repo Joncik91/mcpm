@@ -55,10 +55,23 @@ impl ClientKind {
             ClientKind::VsCodeProject => cwd.join(".vscode/mcp.json"),
             ClientKind::Windsurf => home.join(".codeium/windsurf/mcp_config.json"),
             ClientKind::ClaudeDesktop => {
+                // Windows: %APPDATA%\Claude\claude_desktop_config.json
+                if cfg!(windows) {
+                    // Try MSIX virtualized path first (it's more specific)
+                    if let Some(path) = find_msix_claude_config() {
+                        return Some(path);
+                    }
+                    // Standard Windows path (also used for creating new config)
+                    if let Some(data) = dirs::data_dir() {
+                        return Some(data.join("Claude/claude_desktop_config.json"));
+                    }
+                }
+                // macOS: ~/Library/Application Support/Claude/...
                 let mac = home.join("Library/Application Support/Claude/claude_desktop_config.json");
                 if mac.parent().is_some_and(|p| p.exists()) {
                     mac
                 } else {
+                    // Linux: ~/.config/Claude/...
                     home.join(".config/Claude/claude_desktop_config.json")
                 }
             }
@@ -185,4 +198,25 @@ pub struct DiscoveryResult {
     pub active_clients: Vec<ClientKind>,
     /// Non-fatal parse errors
     pub errors: Vec<String>,
+}
+
+/// Search for Claude Desktop config inside MSIX virtualized filesystem.
+/// MSIX installs redirect %APPDATA% to %LOCALAPPDATA%\Packages\Claude_<hash>\LocalCache\Roaming\
+pub(crate) fn find_msix_claude_config() -> Option<PathBuf> {
+    let local = dirs::data_local_dir()?;
+    let packages = local.join("Packages");
+    let entries = std::fs::read_dir(&packages).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with("Claude_") {
+            let candidate = entry
+                .path()
+                .join("LocalCache/Roaming/Claude/claude_desktop_config.json");
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }

@@ -51,13 +51,13 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Cross-platform discovery & crash fixes** `risk:medium` `depends:[]`
+- [x] **S01: Cross-platform discovery & crash fixes** `risk:medium` `depends:[]`
   > After this: Claude Desktop servers appear on Windows; non-ASCII server names don't crash; `e` opens notepad on Windows
 
-- [ ] **S02: Config writer correctness** `risk:medium` `depends:[S01]`
+- [x] **S02: Config writer correctness** `risk:medium` `depends:[S01]`
   > After this: CC-Global remove only affects top-level mcpServers; backup files named `.json.bak`; undo works with new naming
 
-- [ ] **S03: UX polish & edge case guards** `risk:low` `depends:[S01]`
+- [x] **S03: UX polish & edge case guards** `risk:low` `depends:[S01]`
   > After this: Scroll stops at content end; `h`/`e`/`u` on unsupported servers shows clear feedback; sync blocked for Unknown transport
 
 ## Boundary Map

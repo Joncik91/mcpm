@@ -180,11 +180,16 @@ fn render_server_list(f: &mut Frame, area: Rect, app: &mut App) {
     f.render_stateful_widget(list, area, &mut state);
 }
 
-fn render_detail(f: &mut Frame, area: Rect, app: &App) {
+fn render_detail(f: &mut Frame, area: Rect, app: &mut App) {
     let lines = match app.selected_server() {
         None => vec![Line::from("  No servers found. Press [a] to add one.")],
         Some(s) => build_detail_lines(s),
     };
+    // Track content and visible height for scroll bounds
+    app.detail_content_height = lines.len();
+    // Visible height = area minus top and bottom borders
+    app.detail_visible_height = area.height.saturating_sub(2) as usize;
+
     let para = Paragraph::new(lines)
         .block(
             Block::default()
@@ -725,9 +730,14 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max - 1])
+        let end = s
+            .char_indices()
+            .nth(max - 1)
+            .map(|(i, _)| i)
+            .unwrap_or(s.len());
+        format!("{}…", &s[..end])
     }
 }
