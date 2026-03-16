@@ -18,7 +18,7 @@ If you have 5 servers across 3 clients, you're manually editing JSON files and h
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ mcpm v1.2.2 — 5 servers                                         │
+│ mcpm v1.3.0 — 5 servers                                         │
 ├──────────────────────┬───────────────────────────────────────────┤
 │ Servers              │ Detail                                    │
 │                      │                                           │
