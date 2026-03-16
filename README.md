@@ -18,7 +18,7 @@ If you have 5 servers across 3 clients, you're manually editing JSON files and h
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ mcpm v1.2.1 — 5 servers                                         │
+│ mcpm v1.2.2 — 5 servers                                         │
 ├──────────────────────┬───────────────────────────────────────────┤
 │ Servers              │ Detail                                    │
 │                      │                                           │
@@ -96,7 +96,7 @@ mcpm --version
 | `d` | Remove server from selected clients |
 | `s` | Sync server to clients that don't have it |
 | `e` | Edit config file in `$EDITOR` |
-| `u` | Undo last config change (restore from `.bak`) |
+| `u` | Undo last config change (restore from `.json.bak`) |
 
 ### Health Checks
 
@@ -126,20 +126,22 @@ Health checks run in background threads so the TUI stays responsive.
 | Cursor (project) | `.cursor/mcp.json` | `mcpServers` |
 | VS Code (project) | `.vscode/mcp.json` | `servers` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers` |
+| Claude Desktop (Windows MSIX) | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (Linux) | `~/.config/Claude/claude_desktop_config.json` | `mcpServers` |
 | Claude Code (plugins) | `~/.claude/plugins/**/external_plugins/**/.mcp.json` | flat (read-only discovery) |
 
 ## Safety
 
-- **Backup before every write** — `.bak` file created alongside the original
-- **Atomic writes** — writes to `.tmp` then renames to prevent corruption
+- **Backup before every write** — `.json.bak` file created alongside the original
+- **Atomic writes** — writes to `.json.tmp` then renames to prevent corruption
 - **Read-modify-write** — preserves all existing config fields and other servers
-- **Undo** — press `u` to restore the previous config from the `.bak` file
+- **Undo** — press `u` to restore the previous config from the `.json.bak` file
 
 ## Tech
 
-- Rust, ~2500 lines
+- Rust, ~2750 lines
 - [ratatui](https://ratatui.rs) + crossterm for TUI
 - serde_json for config parsing/writing
 - No async runtime, no network calls (except spawning local server processes for health checks)
