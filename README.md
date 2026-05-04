@@ -1,6 +1,35 @@
+<div align="center">
+
+<img src="docs/logo.svg" alt="mcpm" width="160" height="160">
+
 # mcpm
 
-A terminal dashboard for managing MCP servers across all your clients. See everything in one place. Add, remove, sync, health check — without manually editing JSON files.
+[![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-E8954A.svg)](LICENSE)
+[![ratatui](https://img.shields.io/badge/TUI-ratatui-E8954A)](https://ratatui.rs/)
+[![8 clients supported](https://img.shields.io/badge/clients-8%20supported-E8954A)](#config-files-discovered)
+[![Binary size: 1.9 MB](https://img.shields.io/badge/release%20binary-1.9%20MB-E8954A)]()
+[![No async runtime](https://img.shields.io/badge/no%20async%20runtime-✓-E8954A)]()
+
+**A terminal dashboard for managing MCP servers across all your clients.**
+
+See everything in one place. Add, remove, sync, health check — without manually editing JSON files.
+
+</div>
+
+## Table of Contents
+
+- [The Problem](#the-problem)
+- [What You Get](#what-you-get)
+- [Install](#install)
+- [Usage](#usage)
+- [Keybindings](#keybindings)
+- [How Health Checks Work](#how-health-checks-work)
+- [Config Files Discovered](#config-files-discovered)
+- [Safety](#safety)
+- [Security](#security)
+- [Tech](#tech)
+- [License](#license)
 
 ## The Problem
 
@@ -139,14 +168,38 @@ Health checks run in background threads so the TUI stays responsive.
 - **Read-modify-write** — preserves all existing config fields and other servers
 - **Undo** — press `u` to restore the previous config from the `.json.bak` file
 
+## Security
+
+mcpm reads and writes the actual config files your MCP clients use,
+and spawns processes to do health checks. Three implications worth
+being explicit about:
+
+- **Health checks execute the server's `command`.** When you press
+  `h` or `c`, mcpm spawns the configured stdio server's binary with
+  the configured args and env. Any server you've added to a client
+  config is already trusted to run; mcpm doesn't introduce new
+  execution risk, but it also doesn't sandbox what the server does
+  during `initialize`. Treat `mcpm check` like `claude` itself —
+  don't run it against configs from untrusted sources.
+- **Writes happen with your full filesystem permission.** mcpm edits
+  files in `~/.claude.json`, `~/.cursor/`, `.vscode/`, and similar
+  locations. The [Safety](#safety) primitives (atomic writes, `.bak`
+  files, undo) reduce the blast radius of mistakes — but a bug in
+  mcpm could still corrupt a config. Keep your dotfiles in version
+  control.
+- **No network listener.** mcpm has no server, no daemon, no exposed
+  port. The only network-adjacent action is spawning local stdio
+  servers for health checks, which read/write on the spawned
+  process's stdio pipes only.
+
 ## Tech
 
 - Rust, ~2750 lines
 - [ratatui](https://ratatui.rs) + crossterm for TUI
 - serde_json for config parsing/writing
 - No async runtime, no network calls (except spawning local server processes for health checks)
-- 1.9MB release binary
+- 1.9 MB release binary
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
