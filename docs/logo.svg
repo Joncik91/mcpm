@@ -4,12 +4,16 @@
 
   <rect width="400" height="400" rx="48" fill="#0E0E0F"/>
 
-  <g fill="none" stroke="#E8954A" stroke-width="18"
+  <!-- The two LEFT corners (closer to the selected row's caret) get
+       a heavier stroke — the focused-pane border in real ratatui.
+       Right corners stay at base weight, suggesting "this pane has
+       focus, the other doesn't." -->
+  <g fill="none" stroke="#E8954A"
      stroke-linecap="square" stroke-linejoin="miter">
-    <path d="M 76 140 L 76 76 L 140 76"/>
-    <path d="M 324 140 L 324 76 L 260 76"/>
-    <path d="M 76 260 L 76 324 L 140 324"/>
-    <path d="M 324 260 L 324 324 L 260 324"/>
+    <path d="M 76 140 L 76 76 L 140 76" stroke-width="22"/>
+    <path d="M 76 260 L 76 324 L 140 324" stroke-width="22"/>
+    <path d="M 324 140 L 324 76 L 260 76" stroke-width="14"/>
+    <path d="M 324 260 L 324 324 L 260 324" stroke-width="14"/>
   </g>
 
   <rect x="120" y="186" width="168" height="28" fill="#E8954A"/>
