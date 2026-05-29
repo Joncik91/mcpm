@@ -35,6 +35,10 @@ pub struct AddWizard {
     pub clients: Vec<(ClientKind, bool)>,
     pub cursor: usize,
     pub error: Option<String>,
+    /// Selected clients where a server of this name already exists in the scope
+    /// the write will target — i.e. it will be overwritten on confirm. Computed
+    /// against on-disk config when entering the Confirm step (see app.rs).
+    pub overwrite_clients: Vec<ClientKind>,
 }
 
 #[derive(PartialEq)]
@@ -70,6 +74,7 @@ impl AddWizard {
             clients,
             cursor: 0,
             error: None,
+            overwrite_clients: Vec::new(),
         }
     }
 

@@ -421,6 +421,21 @@ fn render_add_wizard(f: &mut Frame, area: Rect, wiz: &AddWizard) {
                     if wiz.env_lines.len() == 1 { "" } else { "s" }
                 ))));
             }
+            if !wiz.overwrite_clients.is_empty() {
+                lines.push(Line::from(""));
+                let targets = wiz
+                    .overwrite_clients
+                    .iter()
+                    .map(|c| c.label())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                lines.push(Line::from(Span::styled(
+                    format!("  ⚠ Overwrites existing \"{}\" in: {}", wiz.name, targets),
+                    Style::default()
+                        .fg(Color::Red)
+                        .add_modifier(Modifier::BOLD),
+                )));
+            }
         }
     }
 

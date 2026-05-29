@@ -296,6 +296,10 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> std::io::Result<(bool, Option<
 }
 
 fn handle_add_wizard(app: &mut App, key: KeyEvent) {
+    // Clone cwd up front so the overwrite check (which reads config files) needs
+    // no borrow of `app` while `wiz` holds a mutable borrow of `app.mode`.
+    let cwd = app.cwd.clone();
+
     let Mode::AddWizard(ref mut wiz) = app.mode else {
         return;
     };
@@ -334,7 +338,19 @@ fn handle_add_wizard(app: &mut App, key: KeyEvent) {
                 KeyCode::Down | KeyCode::Char('j') => wiz.cursor_down(),
                 KeyCode::Char(' ') => wiz.toggle_client(),
                 KeyCode::Enter => {
-                    wiz.advance();
+                    // advance() validates "at least one client" and moves to
+                    // Confirm; on success, compute which targets would actually
+                    // be clobbered by checking the real write scope on disk.
+                    if wiz.advance() {
+                        let name = wiz.name.trim().to_string();
+                        wiz.overwrite_clients = wiz
+                            .selected_clients()
+                            .into_iter()
+                            .filter(|c| {
+                                config_writer::server_exists_in_scope(c, &cwd, &name)
+                            })
+                            .collect();
+                    }
                 }
                 _ => {}
             },
@@ -368,21 +384,36 @@ fn execute_add(app: &mut App) {
 
     let mut errors = Vec::new();
     let mut success_count = 0;
+    let mut overwrote_count = 0;
 
     for client in &clients {
         match config_writer::add_server(client, &app.cwd, &name, &server_value) {
-            Ok(()) => success_count += 1,
+            Ok(overwrote) => {
+                success_count += 1;
+                if overwrote {
+                    overwrote_count += 1;
+                }
+            }
             Err(e) => errors.push(format!("{}: {}", client.label(), e)),
         }
     }
 
     if errors.is_empty() {
-        app.set_status(format!(
+        // Report overwrites from the authoritative write result, not just the
+        // pre-confirm warning — a stale snapshot can't hide a real clobber here.
+        let mut msg = format!(
             "Added \"{}\" to {} client{}",
             name,
             success_count,
             if success_count == 1 { "" } else { "s" }
-        ));
+        );
+        if overwrote_count > 0 {
+            msg.push_str(&format!(
+                " (overwrote {} existing)",
+                overwrote_count
+            ));
+        }
+        app.set_status(msg);
     } else {
         app.set_status(format!("Errors: {}", errors.join("; ")));
     }
@@ -431,7 +462,8 @@ fn execute_remove(app: &mut App) {
     let name = rm.server_name.clone();
     let clients = rm.selected_clients();
     let mut errors = Vec::new();
-    let mut success_count = 0;
+    let mut removed_count = 0;
+    let mut not_found = Vec::new();
 
     // For plugin servers, find the source_path
     let plugin_source: Option<String> = app
@@ -452,20 +484,38 @@ fn execute_remove(app: &mut App) {
             config_writer::remove_server(client, &app.cwd, &name)
         };
         match res {
-            Ok(()) => success_count += 1,
+            Ok(true) => removed_count += 1,
+            Ok(false) => not_found.push(client.label()),
             Err(e) => errors.push(format!("{}: {}", client.label(), e)),
         }
     }
 
-    if errors.is_empty() {
+    if removed_count == 0 && errors.is_empty() {
+        // Every target was a no-op — e.g. a CC-Global entry that only lives in a
+        // project scope (D002 leaves those untouched). Don't claim a fake success.
         app.set_status(format!(
-            "Removed \"{}\" from {} client{}",
+            "\"{}\" not present in selected config{} — nothing removed",
             name,
-            success_count,
-            if success_count == 1 { "" } else { "s" }
+            if not_found.len() == 1 { "" } else { "s" }
         ));
     } else {
-        app.set_status(format!("Errors: {}", errors.join("; ")));
+        // Surface every outcome together so a partial success (some configs
+        // mutated) is never masked by an error on another client.
+        let mut parts: Vec<String> = Vec::new();
+        if removed_count > 0 {
+            parts.push(format!(
+                "removed from {} client{}",
+                removed_count,
+                if removed_count == 1 { "" } else { "s" }
+            ));
+        }
+        if !not_found.is_empty() {
+            parts.push(format!("not present in {}", not_found.join(", ")));
+        }
+        if !errors.is_empty() {
+            parts.push(format!("errors: {}", errors.join("; ")));
+        }
+        app.set_status(format!("\"{}\": {}", name, parts.join("; ")));
     }
 
     app.mode = Mode::Normal;
@@ -508,7 +558,7 @@ fn execute_sync(app: &mut App) {
 
     for client in &clients {
         match config_writer::add_server(client, &app.cwd, &name, &value) {
-            Ok(()) => success_count += 1,
+            Ok(_) => success_count += 1,
             Err(e) => errors.push(format!("{}: {}", client.label(), e)),
         }
     }
