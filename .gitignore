@@ -1,6 +1,10 @@
 .claude-bridge/
 /target
 
+# Machine-local Claude Code state (caches, per-machine settings)
+.claude/*.local.json
+.claude/**/*.local.json
+
 # ── GSD baseline (auto-generated) ──
 .gsd/activity/
 .gsd/runtime/
