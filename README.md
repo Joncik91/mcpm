@@ -4,11 +4,11 @@
 
 # mcpm
 
-[![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-E8954A.svg)](LICENSE)
 [![ratatui](https://img.shields.io/badge/TUI-ratatui-E8954A)](https://ratatui.rs/)
-[![8 clients supported](https://img.shields.io/badge/clients-8%20supported-E8954A)](#config-files-discovered)
-[![Binary size: 1.9 MB](https://img.shields.io/badge/release%20binary-1.9%20MB-E8954A)]()
+[![8 clients supported](https://img.shields.io/badge/clients-9%20supported-E8954A)](#config-files-discovered)
+[![Binary size: 2.3 MB](https://img.shields.io/badge/release%20binary-2.3%20MB-E8954A)]()
 [![No async runtime](https://img.shields.io/badge/no%20async%20runtime-✓-E8954A)]()
 
 **A terminal dashboard for managing MCP servers across all your clients.**
@@ -35,7 +35,7 @@ See everything in one place. Add, remove, sync, health check — without manuall
 
 MCP servers are configured differently across every client:
 
-- Claude Code → `~/.claude.json` and `.mcp.json`
+- Claude Code → `~/.claude.json` (user + per-project local scope) and `.mcp.json`
 - Cursor → `~/.cursor/mcp.json`
 - VS Code → `.vscode/mcp.json`
 - Windsurf → `~/.codeium/windsurf/mcp_config.json`
@@ -47,7 +47,7 @@ If you have 5 servers across 3 clients, you're manually editing JSON files and h
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ mcpm v1.3.0 — 5 servers                                         │
+│ mcpm v1.4.0 — 5 servers                                         │
 ├──────────────────────┬───────────────────────────────────────────┤
 │ Servers              │ Detail                                    │
 │                      │                                           │
@@ -65,12 +65,12 @@ If you have 5 servers across 3 clients, you're manually editing JSON files and h
 │ playwright                      ✓                                │
 │ memory                                  ✓                        │
 └──────────────────────────────────────────────────────────────────┘
- a:add  d:remove  s:sync  e:edit  u:undo  h:check  c:check-all  !:errors  q:quit
+ a:add  d:remove  s:sync  e:edit  u/U:undo/redo  h/c:check  r:refresh  ?:help  q:quit
 ```
 
 ## Install
 
-Requires Rust 1.75+.
+Requires Rust 1.85+ (edition 2024).
 
 ```bash
 git clone https://github.com/Joncik91/mcpm.git
@@ -101,7 +101,8 @@ Or run directly without installing:
 ```bash
 mcpm              # Launch TUI
 mcpm list         # Plain text server list (for scripting/SSH)
-mcpm check        # Health check all stdio servers (CI-friendly, exit code 0/1)
+mcpm check        # Health check all stdio servers in parallel (CI-friendly, exit code 0/1)
+mcpm --timeout 20 check   # Longer timeout, e.g. for first-run `npx -y` downloads
 mcpm --version
 ```
 
@@ -113,19 +114,21 @@ mcpm --version
 |-----|--------|
 | `j` / `↓` | Move down |
 | `k` / `↑` | Move up |
+| `g` / `G` | First / last server |
 | `PgUp` / `PgDn` | Scroll detail panel |
 | `r` | Refresh (rescan all configs) |
+| `?` | Key help |
 | `q` / `Ctrl-C` | Quit |
 
 ### Server Management
 
 | Key | Action |
 |-----|--------|
-| `a` | Add server — wizard for name, transport (stdio/http/sse), config, client selection |
-| `d` | Remove server from selected clients |
-| `s` | Sync server to clients that don't have it |
-| `e` | Edit config file in `$EDITOR` |
-| `u` | Undo last config change (restore from `.json.bak`) |
+| `a` | Add server — wizard for name, transport (stdio/http/sse), command + quoted args or URL + headers, env, client selection. `Shift-Tab` goes back a step |
+| `d` | Remove server — lists every config holding that name; only the selected row is pre-checked |
+| `s` | Sync — copies the server's entry verbatim (incl. `cwd`, `timeout`, etc.) to clients that don't have it |
+| `e` | Edit the server's config file in `$VISUAL` / `$EDITOR` (arguments allowed, e.g. `code -w`) |
+| `u` / `U` | Undo / redo add, remove and sync operations from this session (all files of an operation at once) |
 
 ### Health Checks
 
@@ -137,36 +140,47 @@ mcpm --version
 
 ## How Health Checks Work
 
-For stdio servers, mcpm spawns the server process, sends a JSON-RPC `initialize` message, and checks for a valid response within 5 seconds.
+For stdio servers, mcpm spawns the server process, sends a JSON-RPC `initialize` message, and waits for the matching response (default 5s, `--timeout` to change).
 
-- `●` green — healthy, shows server name + version from response
-- `⚠` yellow — timeout after 5s
-- `✗` red — error (command not found, invalid response, etc.)
+- `${VAR}` / `${VAR:-default}` (and VS Code's `${workspaceFolder}`, `${userHome}`, `${env:VAR}`) are expanded in command, args and env first, as clients do.
+- Log lines, notifications and `Content-Length` framing before the response are tolerated.
+- The server runs in its own process group, which is killed afterwards — `npx` → `node` grandchildren don't leak (Unix).
+- On Windows, `.cmd` shims such as `npx` are retried through `cmd /C`.
 
-Health checks run in background threads so the TUI stays responsive.
+Results:
+
+- `●` green — healthy, shows server name, version and negotiated protocol version
+- `⚠` yellow — timeout
+- `✗` red — error (command not found, server error, or exit code plus the last stderr line)
+
+Health checks run in background threads so the TUI stays responsive; results stay attached to the right server across rescans.
 
 ## Config Files Discovered
 
 | Client | Path | Format |
 |--------|------|--------|
-| Claude Code (global) | `~/.claude.json` | `projects[path].mcpServers` |
+| Claude Code (global) | `~/.claude.json` | top-level `mcpServers` |
+| Claude Code (local) | `~/.claude.json` | `projects[<cwd>].mcpServers` — current directory only |
 | Claude Code (project) | `.mcp.json` | flat or `mcpServers` wrapped |
 | Cursor (global) | `~/.cursor/mcp.json` | `mcpServers` |
 | Cursor (project) | `.cursor/mcp.json` | `mcpServers` |
-| VS Code (project) | `.vscode/mcp.json` | `servers` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| VS Code (project) | `.vscode/mcp.json` | `servers` (or `mcpServers`); JSONC comments and trailing commas accepted |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` (`serverUrl` read as the URL) |
 | Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (Windows MSIX) | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (Linux) | `~/.config/Claude/claude_desktop_config.json` | `mcpServers` |
-| Claude Code (plugins) | `~/.claude/plugins/**/external_plugins/**/.mcp.json` | flat (read-only discovery) |
+| Claude Code (plugins) | `~/.claude/plugins/marketplaces/*/external_plugins/*/.mcp.json` | flat or wrapped; installed plugins only; remove supported, add/sync/edit not |
 
 ## Safety
 
 - **Backup before every write** — `.json.bak` file created alongside the original
-- **Atomic writes** — writes to `.json.tmp` then renames to prevent corruption
-- **Read-modify-write** — preserves all existing config fields and other servers
-- **Undo** — press `u` to restore the previous config from the `.json.bak` file
+- **Atomic writes** — temp file (with the original's permissions, fsynced) then rename
+- **No clobbering** — if a config changed on disk since mcpm read it (e.g. Claude Code wrote `~/.claude.json`), the write is refused
+- **Minimal diffs** — key order, indentation, line endings and trailing newline are preserved; other fields and servers untouched
+- **Symlinks** — symlinked dotfiles are written through to their target, not replaced
+- **Comments** — files with JSONC comments are never rewritten (comments would be lost); mcpm tells you to edit them with `e`
+- **Undo** — `u` restores exactly what an operation changed, and refuses if the file was modified since
 
 ## Security
 
@@ -194,11 +208,11 @@ being explicit about:
 
 ## Tech
 
-- Rust, ~2750 lines
+- Rust, ~5000 lines including ~50 unit/integration tests (`cargo test`)
 - [ratatui](https://ratatui.rs) + crossterm for TUI
 - serde_json for config parsing/writing
 - No async runtime, no network calls (except spawning local server processes for health checks)
-- 1.9 MB release binary
+- 2.3 MB release binary
 
 ## License
 
