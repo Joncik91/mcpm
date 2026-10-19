@@ -7,7 +7,7 @@
 [![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-E8954A.svg)](LICENSE)
 [![ratatui](https://img.shields.io/badge/TUI-ratatui-E8954A)](https://ratatui.rs/)
-[![8 clients supported](https://img.shields.io/badge/clients-9%20supported-E8954A)](#config-files-discovered)
+[![9 clients supported](https://img.shields.io/badge/clients-9%20supported-E8954A)](#config-files-discovered)
 [![Binary size: 2.3 MB](https://img.shields.io/badge/release%20binary-2.3%20MB-E8954A)]()
 [![No async runtime](https://img.shields.io/badge/no%20async%20runtime-✓-E8954A)]()
 
@@ -170,14 +170,14 @@ Health checks run in background threads so the TUI stays responsive; results sta
 | Claude Desktop (Windows MSIX) | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers` |
 | Claude Desktop (Linux) | `~/.config/Claude/claude_desktop_config.json` | `mcpServers` |
-| Claude Code (plugins) | `~/.claude/plugins/marketplaces/*/external_plugins/*/.mcp.json` | flat or wrapped; installed plugins only; remove supported, add/sync/edit not |
+| Claude Code (plugins) | `~/.claude/plugins/marketplaces/*/external_plugins/*/.mcp.json` | flat or wrapped; installed plugins only (a matching `plugins/<name>` dir in the marketplace); remove supported, add/sync/edit not |
 
 ## Safety
 
 - **Backup before every write** — `.json.bak` file created alongside the original
 - **Atomic writes** — temp file (with the original's permissions, fsynced) then rename
-- **No clobbering** — if a config changed on disk since mcpm read it (e.g. Claude Code wrote `~/.claude.json`), the write is refused
-- **Minimal diffs** — key order, indentation, line endings and trailing newline are preserved; other fields and servers untouched
+- **No clobbering** — every write re-reads the file right before changing it, so edits made elsewhere while mcpm is open (e.g. Claude Code writing `~/.claude.json`) are kept; if the file changes between that read and the write, the write is refused
+- **Minimal diffs** — key order, indent width, line endings and trailing newline are preserved; other fields and servers untouched. On pretty-printed files (what clients write) the diff is only the changed entry; hand-compacted one-line entries get re-expanded
 - **Symlinks** — symlinked dotfiles are written through to their target, not replaced
 - **Comments** — files with JSONC comments are never rewritten (comments would be lost); mcpm tells you to edit them with `e`
 - **Undo** — `u` restores exactly what an operation changed, and refuses if the file was modified since
